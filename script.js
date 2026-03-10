@@ -20,6 +20,31 @@ const modalCloseBtn = document.getElementById("modalCloseBtn");
 
 let currentStatus = "all";
 
+function showLoading() {
+  loadingOverlay.style.display = "flex";
+}
+
+function hideLoading() {
+  loadingOverlay.style.display = "none";
+}
+
+function getLabelClass(label) {
+  const lower = label.toLowerCase();
+  if (lower.includes("bug")) return "label-bug";
+  if (lower.includes("enhancement")) return "label-enhancement";
+  if (lower.includes("help wanted")) return "label-helpwanted";
+  if (lower.includes("good first issue")) return "label-goodfirst";
+  if (lower.includes("documentation")) return "label-doc";
+  return "label-other";
+}
+
+function getPriorityClass(priority) {
+  const p = (priority || "medium").toLowerCase();
+  if (p === "high") return "high";
+  if (p === "medium") return "medium";
+  return "low";
+}
+
 function createIssueCard(issue, index) {
   const statusLower = (issue.status || "open").toLowerCase();
   const priorityLower = (issue.priority || "medium").toLowerCase();
@@ -83,3 +108,59 @@ function createIssueCard(issue, index) {
 
   return card;
 }
+
+async function loadIssues(status = "all", query = "") {
+  showLoading();
+  try {
+    let url = query.trim() ? `${SEARCH_API}${encodeURIComponent(query.trim())}` : ALL_ISSUES;
+    const res = await fetch(url);
+    if (!res.ok) throw new Error("Network response was not ok");
+
+    const data = await res.json();
+    if (data.status !== "success") throw new Error(data.message || "API error");
+
+    let issues = data.data || [];
+
+    if (!query.trim()) {
+      if (status === "open") issues = issues.filter(i => (i.status || "").toLowerCase() === "open");
+      if (status === "closed") issues = issues.filter(i => (i.status || "").toLowerCase() === "closed");
+    }
+
+    issueCountEl.textContent = `${issues.length} issues`;
+
+    issuesGrid.innerHTML = "";
+    if (issues.length === 0) {
+      issuesGrid.innerHTML = '<p style="text-align:center; padding:80px 0; color:#586069;">No issues found.</p>';
+    } else {
+      issues.forEach((issue, i) => {
+        issuesGrid.appendChild(createIssueCard(issue, i));
+      });
+    }
+  } catch (err) {
+    console.error(err);
+    issuesGrid.innerHTML = `<p style="text-align:center; color:#c62828; padding:80px 0;">
+      Failed to load issues: ${err.message}
+    </p>`;
+  } finally {
+    hideLoading();
+  }
+}
+
+document.querySelectorAll(".tab").forEach(tab => {
+  tab.addEventListener("click", () => {
+    document.querySelectorAll(".tab").forEach(t => t.classList.remove("active"));
+    tab.classList.add("active");
+    currentStatus = tab.dataset.status;
+    loadIssues(currentStatus, searchInput.value.trim());
+  });
+});
+
+searchBtn.addEventListener("click", () => loadIssues(currentStatus, searchInput.value.trim()));
+searchInput.addEventListener("keypress", e => {
+  if (e.key === "Enter") loadIssues(currentStatus, searchInput.value.trim());
+});
+
+modalCloseBtn.onclick = () => modal.style.display = "none";
+modal.onclick = e => { if (e.target === modal) modal.style.display = "none"; };
+
+loadIssues("all");
